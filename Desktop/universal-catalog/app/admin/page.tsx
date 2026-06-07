@@ -55,7 +55,10 @@ export default function AdminPage() {
 
     for (const file of imageFiles) {
       const fileExt = file.name.split(".").pop();
-      const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random()
+        .toString(36)
+        .substring(2)}.${fileExt}`;
+
       const filePath = `products/${fileName}`;
 
       const { error } = await supabase.storage
@@ -178,6 +181,38 @@ export default function AdminPage() {
     setVideoUrl(product.video_url || "");
     setImageFiles([]);
     setMessage("أنت الآن تعدل المنتج");
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function deleteProduct(productId: string) {
+    const confirmDelete = confirm("هل أنت متأكد من حذف المنتج؟");
+
+    if (!confirmDelete) return;
+
+    const { error: imagesError } = await supabase
+      .from("item_images")
+      .delete()
+      .eq("item_id", productId);
+
+    if (imagesError) {
+      setMessage("حصل خطأ أثناء حذف صور المنتج: " + imagesError.message);
+      return;
+    }
+
+    const { error } = await supabase.from("items").delete().eq("id", productId);
+
+    if (error) {
+      setMessage("حصل خطأ أثناء حذف المنتج: " + error.message);
+      return;
+    }
+
+    setMessage("تم حذف المنتج بنجاح ✅");
+
+    if (editingId === productId) {
+      resetForm();
+    }
+
+    loadProducts();
   }
 
   function resetForm() {
@@ -198,31 +233,69 @@ export default function AdminPage() {
           لوحة إدارة المنتجات
         </h1>
 
-        <select value={categoryId} onChange={(e) => setCategoryId(e.target.value)} style={inputStyle}>
+        <select
+          value={categoryId}
+          onChange={(e) => setCategoryId(e.target.value)}
+          style={inputStyle}
+        >
           <option value="">اختار القسم</option>
           {categories.map((category) => (
-            <option key={category.id} value={category.id}>{category.name}</option>
+            <option key={category.id} value={category.id}>
+              {category.name}
+            </option>
           ))}
         </select>
 
-        <input value={title} onChange={(e) => {
-          setTitle(e.target.value);
-          setSlug(makeSlug(e.target.value));
-        }} placeholder="اسم المنتج" style={inputStyle} />
+        <input
+          value={title}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            setSlug(makeSlug(e.target.value));
+          }}
+          placeholder="اسم المنتج"
+          style={inputStyle}
+        />
 
-        <input value={slug} onChange={(e) => setSlug(e.target.value)} placeholder="رابط المنتج" style={inputStyle} />
+        <input
+          value={slug}
+          onChange={(e) => setSlug(e.target.value)}
+          placeholder="رابط المنتج"
+          style={inputStyle}
+        />
 
-        <input value={shortDescription} onChange={(e) => setShortDescription(e.target.value)} placeholder="وصف مختصر" style={inputStyle} />
+        <input
+          value={shortDescription}
+          onChange={(e) => setShortDescription(e.target.value)}
+          placeholder="وصف مختصر"
+          style={inputStyle}
+        />
 
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} placeholder="الوصف الكامل" rows={4} style={inputStyle} />
+        <textarea
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          placeholder="الوصف الكامل"
+          rows={4}
+          style={inputStyle}
+        />
 
-        <input type="file" accept="image/*" multiple onChange={(e) => setImageFiles(Array.from(e.target.files || []))} style={inputStyle} />
+        <input
+          type="file"
+          accept="image/*"
+          multiple
+          onChange={(e) => setImageFiles(Array.from(e.target.files || []))}
+          style={inputStyle}
+        />
 
         <p style={{ marginTop: 8, color: "#6b7280" }}>
           عدد الصور المختارة: {imageFiles.length}
         </p>
 
-        <input value={videoUrl} onChange={(e) => setVideoUrl(e.target.value)} placeholder="رابط الفيديو" style={inputStyle} />
+        <input
+          value={videoUrl}
+          onChange={(e) => setVideoUrl(e.target.value)}
+          placeholder="رابط الفيديو"
+          style={inputStyle}
+        />
 
         <button onClick={saveProduct} style={buttonStyle}>
           {editingId ? "حفظ التعديل" : "إضافة المنتج"}
@@ -238,7 +311,9 @@ export default function AdminPage() {
       </div>
 
       <div style={{ ...cardStyle, marginTop: 30 }}>
-        <h2 style={{ fontSize: 24, fontWeight: "bold" }}>المنتجات الحالية</h2>
+        <h2 style={{ fontSize: 24, fontWeight: "bold" }}>
+          المنتجات الحالية
+        </h2>
 
         {products.map((product) => (
           <div key={product.id} style={productRowStyle}>
@@ -249,9 +324,21 @@ export default function AdminPage() {
               </p>
             </div>
 
-            <button onClick={() => editProduct(product)} style={smallButtonStyle}>
-              تعديل
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => editProduct(product)}
+                style={smallButtonStyle}
+              >
+                تعديل
+              </button>
+
+              <button
+                onClick={() => deleteProduct(product.id)}
+                style={deleteButtonStyle}
+              >
+                حذف
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -307,6 +394,15 @@ const smallButtonStyle: CSSProperties = {
   border: "none",
   borderRadius: 8,
   background: "#111827",
+  color: "white",
+  cursor: "pointer",
+};
+
+const deleteButtonStyle: CSSProperties = {
+  padding: "8px 14px",
+  border: "none",
+  borderRadius: 8,
+  background: "#dc2626",
   color: "white",
   cursor: "pointer",
 };
