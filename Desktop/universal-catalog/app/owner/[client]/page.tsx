@@ -11,6 +11,7 @@ export default function OwnerPage() {
 
   const [client, setClient] = useState<any>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -133,7 +134,7 @@ export default function OwnerPage() {
     return uploadedUrls;
   }
 
-  async function addProduct() {
+  async function saveProduct() {
     setMessage("");
 
     if (!client) return;
@@ -144,10 +145,11 @@ export default function OwnerPage() {
     }
 
     try {
-      const { data: newItem, error } = await supabase
-        .from("items")
-        .insert({
-          client_id: client.id,
+      if (editingId) {
+        const uploadedUrls = await uploadImages(editingId);
+        const newMainImage = uploadedUrls[0];
+
+        const updateData: any = {
           category_id: categoryId,
           title,
           slug,
@@ -155,41 +157,79 @@ export default function OwnerPage() {
           description,
           video_url: videoUrl,
           is_active: true,
-        })
-        .select()
-        .single();
+        };
 
-      if (error) {
-        setMessage("حصل خطأ: " + error.message);
-        return;
-      }
+        if (newMainImage) {
+          updateData.image_url = newMainImage;
+          updateData.main_image_url = newMainImage;
+        }
 
-      const uploadedUrls = await uploadImages(newItem.id);
-
-      if (uploadedUrls[0]) {
-        await supabase
+        const { error } = await supabase
           .from("items")
-          .update({
-            image_url: uploadedUrls[0],
-            main_image_url: uploadedUrls[0],
+          .update(updateData)
+          .eq("id", editingId)
+          .eq("client_id", client.id);
+
+        if (error) {
+          setMessage("حصل خطأ أثناء التعديل: " + error.message);
+          return;
+        }
+
+        setMessage("تم تعديل المنتج بنجاح ✅");
+      } else {
+        const { data: newItem, error } = await supabase
+          .from("items")
+          .insert({
+            client_id: client.id,
+            category_id: categoryId,
+            title,
+            slug,
+            short_description: shortDescription,
+            description,
+            video_url: videoUrl,
+            is_active: true,
           })
-          .eq("id", newItem.id);
+          .select()
+          .single();
+
+        if (error) {
+          setMessage("حصل خطأ: " + error.message);
+          return;
+        }
+
+        const uploadedUrls = await uploadImages(newItem.id);
+
+        if (uploadedUrls[0]) {
+          await supabase
+            .from("items")
+            .update({
+              image_url: uploadedUrls[0],
+              main_image_url: uploadedUrls[0],
+            })
+            .eq("id", newItem.id);
+        }
+
+        setMessage("تم إضافة المنتج بنجاح ✅");
       }
 
-      setMessage("تم إضافة المنتج بنجاح ✅");
-
-      setCategoryId("");
-      setTitle("");
-      setSlug("");
-      setShortDescription("");
-      setDescription("");
-      setVideoUrl("");
-      setImageFiles([]);
-
+      resetForm();
       loadProducts(client.id);
     } catch (err: any) {
       setMessage("حصل خطأ: " + err.message);
     }
+  }
+
+  function editProduct(product: any) {
+    setEditingId(product.id);
+    setCategoryId(product.category_id || "");
+    setTitle(product.title || "");
+    setSlug(product.slug || "");
+    setShortDescription(product.short_description || "");
+    setDescription(product.description || "");
+    setVideoUrl(product.video_url || "");
+    setImageFiles([]);
+    setMessage("أنت الآن تعدل المنتج");
+    window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
   async function deleteProduct(productId: string) {
@@ -198,7 +238,11 @@ export default function OwnerPage() {
 
     await supabase.from("item_images").delete().eq("item_id", productId);
 
-    const { error } = await supabase.from("items").delete().eq("id", productId);
+    const { error } = await supabase
+      .from("items")
+      .delete()
+      .eq("id", productId)
+      .eq("client_id", client.id);
 
     if (error) {
       setMessage("حصل خطأ أثناء الحذف: " + error.message);
@@ -206,7 +250,23 @@ export default function OwnerPage() {
     }
 
     setMessage("تم حذف المنتج بنجاح ✅");
+
+    if (editingId === productId) {
+      resetForm();
+    }
+
     loadProducts(client.id);
+  }
+
+  function resetForm() {
+    setEditingId(null);
+    setCategoryId("");
+    setTitle("");
+    setSlug("");
+    setShortDescription("");
+    setDescription("");
+    setVideoUrl("");
+    setImageFiles([]);
   }
 
   if (!isLoggedIn) {
@@ -306,6 +366,10 @@ export default function OwnerPage() {
           style={inputStyle}
         />
 
+        <p style={{ marginTop: 8, color: "#6b7280" }}>
+          عدد الصور المختارة: {imageFiles.length}
+        </p>
+
         <input
           value={videoUrl}
           onChange={(e) => setVideoUrl(e.target.value)}
@@ -313,9 +377,15 @@ export default function OwnerPage() {
           style={inputStyle}
         />
 
-        <button onClick={addProduct} style={buttonStyle}>
-          إضافة المنتج
+        <button onClick={saveProduct} style={buttonStyle}>
+          {editingId ? "حفظ التعديل" : "إضافة المنتج"}
         </button>
+
+        {editingId && (
+          <button onClick={resetForm} style={cancelButtonStyle}>
+            إلغاء التعديل
+          </button>
+        )}
 
         {message && <p style={messageStyle}>{message}</p>}
       </div>
@@ -334,12 +404,21 @@ export default function OwnerPage() {
               </p>
             </div>
 
-            <button
-              onClick={() => deleteProduct(product.id)}
-              style={deleteButtonStyle}
-            >
-              حذف
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={() => editProduct(product)}
+                style={smallButtonStyle}
+              >
+                تعديل
+              </button>
+
+              <button
+                onClick={() => deleteProduct(product.id)}
+                style={deleteButtonStyle}
+              >
+                حذف
+              </button>
+            </div>
           </div>
         ))}
       </div>
@@ -382,6 +461,20 @@ const buttonStyle: CSSProperties = {
   background: "#111827",
   color: "white",
   fontWeight: "bold",
+  cursor: "pointer",
+};
+
+const cancelButtonStyle: CSSProperties = {
+  ...buttonStyle,
+  background: "#6b7280",
+};
+
+const smallButtonStyle: CSSProperties = {
+  padding: "8px 14px",
+  border: "none",
+  borderRadius: 8,
+  background: "#111827",
+  color: "white",
   cursor: "pointer",
 };
 
